@@ -31,7 +31,14 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
+.env
+.env.local
+.env.*.local
 .env*
+
+# Antigravity cache
+.agents/*/cache/
+.agents/*/tmp/
 
 # vercel
 .vercel

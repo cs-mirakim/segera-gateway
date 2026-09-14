@@ -6,6 +6,4 @@ Demo: [Vercel link nanti]
 
 Stack: Next.js, MapLibre, Supabase PostGIS, Gemini Flash - 100% Free Tier.
 
-Setup: npm i, cp .env.example .env.local, npm run dev (atau klik `run-segera.bat`)
-
-Dokumentasi penuh projek ada di dalam folder [`context/`](./context/INDEX.md).
+Setup: npm i, cp .env.example .env.local, npm run dev

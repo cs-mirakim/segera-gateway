@@ -18,7 +18,7 @@ Rules:
 1. NEVER use Mapbox GL. Use maplibre-gl only.
 2. Landing page app/(landing)/page.tsx MUST NOT show map. Show About + Comparison Table + Explore Now button.
 3. Comparison table competitors must be REAL active systems: Walk Score, TravelTime, Esri ArcGIS Urban, openrouteservice, 15MinCity (15mincity.com), Google Maps Nearby.
-4. Apply antislop-ui, antislop-copywriting, design-taste-frontend rules. Read context/DESIGN.md and context/PRD.md.
+4. Apply antislop-ui, antislop-copywriting, design-taste-frontend rules. Read DESIGN.md.
 5. For any OSM query, handle surau in petrol station and indoor mall shops.
 6. Public no login. Implement security.ts with rate limit.
 
