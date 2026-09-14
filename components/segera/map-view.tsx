@@ -104,14 +104,45 @@ export function MapView({
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    // CartoDB Positron style with OSM fallback
+    // Direct OpenStreetMap raster style (Guaranteed 100% free, loads instantly, no API key needed)
+    const osmStyle: maplibregl.StyleSpecification = {
+      version: 8,
+      sources: {
+        'osm-tiles': {
+          type: 'raster',
+          tiles: [
+            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          ],
+          tileSize: 256,
+          attribution: '&copy; OpenStreetMap contributors',
+        },
+      },
+      layers: [
+        {
+          id: 'osm-tiles-layer',
+          type: 'raster',
+          source: 'osm-tiles',
+          minzoom: 0,
+          maxzoom: 19,
+        },
+      ],
+    };
+
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+      style: osmStyle,
       center: [center.lng, center.lat],
-      zoom: travelMode === 'walking' ? 14.5 : 13,
+      zoom: travelMode === 'walking' ? 14.5 : 13.2,
       attributionControl: false,
     });
+
+    // Ensure map tiles resize correctly once container dimensions are rendered
+    setTimeout(() => {
+      map.resize();
+    }, 150);
+    setTimeout(() => {
+      map.resize();
+    }, 500);
 
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: true, showZoom: true }),
@@ -148,7 +179,7 @@ export function MapView({
         source: 'isochrone-source',
         paint: {
           'fill-color': travelMode === 'motor' ? '#0E4D64' : travelMode === 'car' ? '#3B7BB4' : '#1B7A3D',
-          'fill-opacity': 0.16,
+          'fill-opacity': 0.24,
         },
       });
 
@@ -159,8 +190,7 @@ export function MapView({
         source: 'isochrone-source',
         paint: {
           'line-color': travelMode === 'motor' ? '#0E4D64' : travelMode === 'car' ? '#3B7BB4' : '#1B7A3D',
-          'line-width': 2,
-          'line-dasharray': [3, 1],
+          'line-width': 3,
         },
       });
     });
