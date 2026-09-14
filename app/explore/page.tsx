@@ -1,12 +1,24 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { SegeraLogo } from '@/components/segera/segera-logo';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import dynamic from 'next/dynamic';
 import type { FacilityPoi } from '@/components/segera/map-view';
+import {
+  ArrowLeft,
+  Bike,
+  Car,
+  Footprints,
+  Search,
+  Crosshair,
+  Sparkles,
+  RefreshCw,
+  MapPin,
+  CheckCircle2
+} from 'lucide-react';
 
 const MapView = dynamic(
   () => import('@/components/segera/map-view').then((mod) => mod.MapView),
@@ -19,22 +31,11 @@ const MapView = dynamic(
     ),
   }
 );
-import {
-  ArrowLeft,
-  Bike,
-  Car,
-  Footprints,
-  Search,
-  Crosshair,
-  Sparkles,
-  MapPin,
-  CheckCircle2
-} from 'lucide-react';
 
-// Template fasiliti yang akan diselaraskan mengikut koordinat semasa
-const facilityTemplates = [
+// Fallback template jika Overpass server sibuk
+const fallbackTemplates = [
   {
-    id: 1,
+    id: 101,
     name: 'Masjid Kariah & Dewan Solat',
     category: 'surau' as const,
     offsetLat: 0.0035,
@@ -43,11 +44,11 @@ const facilityTemplates = [
     walkMin: 6,
     motorMin: 2,
     carMin: 3,
-    details: 'Pusat ibadah kariah utama, solat berjemaah 5 waktu & parkir motosikal luas',
+    details: 'Pusat ibadah kariah utama, solat berjemaah 5 waktu & kemudahan wuduk',
   },
   {
-    id: 2,
-    name: 'Surau An-Nur Taman Kejiranan',
+    id: 102,
+    name: 'Surau Komuniti Taman',
     category: 'surau' as const,
     offsetLat: -0.0025,
     offsetLng: 0.0032,
@@ -55,11 +56,11 @@ const facilityTemplates = [
     walkMin: 5,
     motorMin: 1,
     carMin: 2,
-    details: 'Surau komuniti aktif aktiviti taklim & solat subuh berjemaah',
+    details: 'Surau kariah aktif aktiviti solat 5 waktu & pengajian mingguan',
   },
   {
-    id: 3,
-    name: 'Petron (Surau Lengkap Berhawa Dingin)',
+    id: 103,
+    name: 'Stesen Minyak (Ada Kemudahan Surau)',
     category: 'surau' as const,
     offsetLat: 0.0052,
     offsetLng: -0.0041,
@@ -67,11 +68,11 @@ const facilityTemplates = [
     walkMin: 8,
     motorMin: 2,
     carMin: 3,
-    details: 'Stesen minyak dengan surau bersih berhawa dingin & tempat wuduk selesa',
+    details: 'Stesen minyak dengan surau bersih berhawa dingin & tandas awam',
   },
   {
-    id: 4,
-    name: 'Klinik Komuniti & Farmasi Sihat',
+    id: 104,
+    name: 'Klinik Komuniti & Farmasi',
     category: 'klinik' as const,
     offsetLat: -0.0048,
     offsetLng: -0.0035,
@@ -79,11 +80,11 @@ const facilityTemplates = [
     walkMin: 9,
     motorMin: 3,
     carMin: 3,
-    details: 'Rawatan pesakit luar, pemeriksaan kesihatan am & bekalan ubat',
+    details: 'Rawatan pesakit luar, pemeriksaan kesihatan asas & bekalan ubat',
   },
   {
-    id: 5,
-    name: 'Pasar Mini 99 & Kedai Runcit',
+    id: 105,
+    name: 'Pasar Mini / Mart Runcit',
     category: 'runcit' as const,
     offsetLat: 0.0022,
     offsetLng: -0.0031,
@@ -91,11 +92,11 @@ const facilityTemplates = [
     walkMin: 5,
     motorMin: 2,
     carMin: 2,
-    details: 'Keperluan dapur harian, barangan basah dan runcit keluarga',
+    details: 'Barangan keperluan dapur harian, runcit & barangan basah',
   },
   {
-    id: 6,
-    name: 'Restoran & Medan Selera Halal',
+    id: 106,
+    name: 'Restoran / Kedai Makan Tempatan',
     category: 'makanan' as const,
     offsetLat: 0.0042,
     offsetLng: 0.0058,
@@ -103,11 +104,11 @@ const facilityTemplates = [
     walkMin: 8,
     motorMin: 2,
     carMin: 3,
-    details: 'Pelbagai gerai makanan sarapan pagi, nasi campur & masakan panas',
+    details: 'Pilihan makanan tempatan, sarapan dan masakan panas',
   },
   {
-    id: 7,
-    name: 'Hentian Bas & Hab Transit Rel',
+    id: 107,
+    name: 'Hentian Bas & Pengangkutan Awam',
     category: 'transit' as const,
     offsetLat: -0.0062,
     offsetLng: 0.0022,
@@ -115,11 +116,11 @@ const facilityTemplates = [
     walkMin: 10,
     motorMin: 3,
     carMin: 4,
-    details: 'Hentian bas perantara dan akses jaringan pengangkutan awam',
+    details: 'Laluan bas perantara ke stesen rel transit terdekat',
   },
   {
-    id: 8,
-    name: 'Alur Saliran Parit Monsun (Titik Limpahan)',
+    id: 108,
+    name: 'Alur Saliran Monsun (Parit Utama)',
     category: 'banjir' as const,
     offsetLat: -0.0038,
     offsetLng: -0.0065,
@@ -127,15 +128,20 @@ const facilityTemplates = [
     walkMin: 11,
     motorMin: 3,
     carMin: 4,
-    details: 'Zon alur limpahan air hujan: Pantau paras air semasa hujan lebat berterusan',
+    details: 'Zon alur limpahan air: Berwaspada jika hujan lebat berterusan',
   },
 ];
 
 export default function ExplorePage() {
-  const [selectedLocation, setSelectedLocation] = useState('Pusat Komuniti / Titik Pilihan Anda');
-  const [coordinates, setCoordinates] = useState({ lat: 3.139, lng: 101.6869 });
+  const [selectedLocation, setSelectedLocation] = useState('KL Sentral / Brickfields');
+  const [coordinates, setCoordinates] = useState({ lat: 3.134, lng: 101.6869 });
   const [timeBudget, setTimeBudget] = useState<5 | 10 | 15>(10);
   const [travelMode, setTravelMode] = useState<'motor' | 'car' | 'walking'>('motor');
+
+  // Real live facilities state
+  const [rawFacilities, setRawFacilities] = useState<FacilityPoi[]>([]);
+  const [isLoadingFacilities, setIsLoadingFacilities] = useState(false);
+  const [isLiveFromOsm, setIsLiveFromOsm] = useState(false);
 
   // Filter states
   const [filters, setFilters] = useState({
@@ -158,10 +164,52 @@ export default function ExplorePage() {
     setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // Fetch real facilities from Overpass API
+  const fetchFacilities = async (lat: number, lng: number) => {
+    setIsLoadingFacilities(true);
+    try {
+      const radius = travelMode === 'walking' ? 1600 : 3500;
+      const res = await fetch(`/api/facilities?lat=${lat}&lng=${lng}&radius=${radius}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.facilities && data.facilities.length > 0) {
+          setRawFacilities(data.facilities);
+          setIsLiveFromOsm(true);
+          showToast(`Berjaya muat ${data.facilities.length} fasiliti sebenar dari OpenStreetMap!`);
+          setIsLoadingFacilities(false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Overpass fetch error, using local fallback:', e);
+    }
+
+    // Fallback if network or overpass is quiet
+    const fallback = fallbackTemplates.map((t) => ({
+      id: t.id,
+      name: t.name,
+      category: t.category,
+      lat: lat + t.offsetLat,
+      lng: lng + t.offsetLng,
+      distanceMeters: t.distanceMeters,
+      walkMin: t.walkMin,
+      motorMin: t.motorMin,
+      carMin: t.carMin,
+      details: t.details,
+    }));
+    setRawFacilities(fallback);
+    setIsLiveFromOsm(false);
+    setIsLoadingFacilities(false);
+  };
+
+  // Fetch on mount or when coordinates change
+  useEffect(() => {
+    fetchFacilities(coordinates.lat, coordinates.lng);
+  }, [coordinates.lat, coordinates.lng]);
+
   const handleCenterChange = (newCenter: { lat: number; lng: number }) => {
     setCoordinates(newCenter);
     setSelectedLocation(`Titik Terpilih (${newCenter.lat.toFixed(4)}, ${newCenter.lng.toFixed(4)})`);
-    showToast('Peta dikira semula pada koordinat baharu.');
   };
 
   const handlePresetSelect = (name: string, lat: number, lng: number) => {
@@ -177,7 +225,7 @@ export default function ExplorePage() {
           const newCenter = { lat: pos.coords.latitude, lng: pos.coords.longitude };
           setCoordinates(newCenter);
           setSelectedLocation('Lokasi Semasa Anda (GPS)');
-          showToast('Menggunakan koordinat GPS lokasi anda.');
+          showToast('Menggunakan GPS lokasi anda...');
         },
         () => {
           showToast('GPS tidak aktif, menggunakan titik rujukan.');
@@ -188,31 +236,15 @@ export default function ExplorePage() {
     }
   };
 
-  // Generate facilities mapped to the current center
-  const allFacilities: FacilityPoi[] = useMemo(() => {
-    return facilityTemplates.map((t) => ({
-      id: t.id,
-      name: t.name,
-      category: t.category,
-      lat: coordinates.lat + t.offsetLat,
-      lng: coordinates.lng + t.offsetLng,
-      distanceMeters: t.distanceMeters,
-      walkMin: t.walkMin,
-      motorMin: t.motorMin,
-      carMin: t.carMin,
-      details: t.details,
-    }));
-  }, [coordinates]);
-
   // Filtered facilities based on active time budget & active toggles
   const activePois = useMemo(() => {
-    return allFacilities.filter((poi) => {
+    return rawFacilities.filter((poi) => {
       if (!filters[poi.category]) return false;
       const travelTime =
         travelMode === 'motor' ? poi.motorMin : travelMode === 'car' ? poi.carMin : poi.walkMin;
       return travelTime <= timeBudget;
     });
-  }, [allFacilities, filters, travelMode, timeBudget]);
+  }, [rawFacilities, filters, travelMode, timeBudget]);
 
   return (
     <div className="flex flex-col h-screen w-full bg-[#FFFBF5] text-[#1A1A1A]">
@@ -228,6 +260,19 @@ export default function ExplorePage() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Data source badge */}
+          <Badge
+            variant="outline"
+            className={`font-mono text-[11px] hidden sm:inline-flex items-center gap-1.5 ${
+              isLiveFromOsm
+                ? 'border-[#1B7A3D] text-[#1B7A3D] bg-[#1B7A3D]/5'
+                : 'border-[#D0C5B0] text-[#6B655B] bg-white'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${isLiveFromOsm ? 'bg-[#1B7A3D] animate-pulse' : 'bg-[#C5A100]'}`} />
+            <span>{isLiveFromOsm ? 'Data Sebenar Overpass OSM' : 'Mod Standby'}</span>
+          </Badge>
+
           <Button
             variant="outline"
             size="sm"
@@ -250,9 +295,17 @@ export default function ExplorePage() {
         <aside className="w-full md:w-[380px] lg:w-[410px] border-r border-[#E0D7C4] bg-[#FAF6EE] flex flex-col overflow-y-auto shrink-0 z-10">
           {/* Location & Search Header */}
           <div className="p-4 border-b border-[#E0D7C4] space-y-2.5 bg-white">
-            <label className="font-mono text-[11px] uppercase tracking-wider text-[#5A564F] font-bold block">
-              Titik Rujukan Analisis
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="font-mono text-[11px] uppercase tracking-wider text-[#5A564F] font-bold block">
+                Titik Rujukan Analisis
+              </label>
+              {isLoadingFacilities && (
+                <span className="flex items-center gap-1 text-[11px] font-mono text-[#1B7A3D] animate-pulse">
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  <span>Memuat OSM...</span>
+                </span>
+              )}
+            </div>
 
             <div className="relative">
               <input
@@ -267,7 +320,7 @@ export default function ExplorePage() {
 
             {/* Quick Presets */}
             <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-              <span className="font-mono text-[10px] text-[#7A756B]">Pilihan Contoh:</span>
+              <span className="font-mono text-[10px] text-[#7A756B]">Contoh:</span>
               <button
                 onClick={() => handlePresetSelect('KL Sentral / Brickfields', 3.134, 101.6869)}
                 className="text-[10px] font-mono px-2 py-0.5 rounded-xs bg-[#EFE9DC] text-[#4A453C] hover:bg-[#E2DDD0] cursor-pointer"
@@ -366,7 +419,7 @@ export default function ExplorePage() {
                     key={mins}
                     onClick={() => {
                       setTimeBudget(mins as 5 | 10 | 15);
-                      showToast(`Zon masa dikemaskini: ${mins} minit.`);
+                      showToast(`Zon masa: ${mins} minit.`);
                     }}
                     className={`h-7 rounded-xs font-mono text-xs font-bold transition-all cursor-pointer ${
                       timeBudget === mins
@@ -457,26 +510,30 @@ export default function ExplorePage() {
                 Fasiliti Dalam Radius ({timeBudget} Min)
               </h4>
               <Badge variant="outline" className="font-mono text-xs border-[#1B7A3D] text-[#1B7A3D] bg-white">
-                {activePois.length} Fasiliti
+                {activePois.length} Ditemui
               </Badge>
             </div>
 
-            {/* Micro info note */}
+            {/* Status info note */}
             <div className="bg-[#FAF4E6] border border-[#E5DAC0] p-2.5 rounded-xs text-[11px] text-[#5A564F] space-y-1">
               <div className="flex items-center gap-1.5 font-mono font-bold text-[#8F7400]">
                 <Sparkles className="w-3 h-3 text-[#C5A100]" />
-                <span>Panduan Peta Interaktif</span>
+                <span>Data Geografi Sebenar</span>
               </div>
               <p>
-                Arahkan kursor tetikus (<em>hover</em>) pada mana-mana ikon di peta untuk melihat maklumat terperinci fasiliti.
+                {isLiveFromOsm
+                  ? 'Fasiliti di bawah ditarik terus dari OpenStreetMap Malaysia mengikut kedudukan titik semasa anda.'
+                  : 'Memaparkan fasiliti contoh. Klik mana-mana titik pada peta untuk menyegerakkan data OSM.'}
               </p>
             </div>
 
-            {/* Facility list */}
+            {/* Facility items list */}
             <div className="space-y-2 text-xs">
               {activePois.length === 0 ? (
                 <div className="p-5 text-center text-[#8C877D] font-mono text-xs bg-white border border-[#E5DFC9] rounded-xs">
-                  Tiada fasiliti dalam {timeBudget} minit. Cuba pilih masa lebih besar atau mod motosikal/kereta.
+                  {isLoadingFacilities
+                    ? 'Sedang memuat turun data fasiliti OpenStreetMap...'
+                    : `Tiada fasiliti dalam bajet ${timeBudget} minit. Cuba tingkatkan masa atau tukar mod mobiliti.`}
                 </div>
               ) : (
                 activePois.map((poi) => (
@@ -492,7 +549,7 @@ export default function ExplorePage() {
                     <div className="flex items-center justify-between pt-1 border-t border-[#F2ECE1] font-mono text-[10px]">
                       <span className="text-[#1B7A3D] font-semibold">
                         {travelMode === 'motor'
-                          ? `~${poi.motorMin} min motosikal`
+                          ? `~${poi.motorMin} min motor`
                           : travelMode === 'car'
                           ? `~${poi.carMin} min kereta`
                           : `~${poi.walkMin} min jalan kaki`}
