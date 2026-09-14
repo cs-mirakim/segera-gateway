@@ -17,7 +17,8 @@ import {
   Sparkles,
   RefreshCw,
   MapPin,
-  CheckCircle2
+  CheckCircle2,
+  X
 } from 'lucide-react';
 
 const MapView = dynamic(
@@ -32,105 +33,13 @@ const MapView = dynamic(
   }
 );
 
-// Fallback template jika Overpass server sibuk
-const fallbackTemplates = [
-  {
-    id: 101,
-    name: 'Masjid Kariah & Dewan Solat',
-    category: 'surau' as const,
-    offsetLat: 0.0035,
-    offsetLng: 0.0028,
-    distanceMeters: 480,
-    walkMin: 6,
-    motorMin: 2,
-    carMin: 3,
-    details: 'Pusat ibadah kariah utama, solat berjemaah 5 waktu & kemudahan wuduk',
-  },
-  {
-    id: 102,
-    name: 'Surau Komuniti Taman',
-    category: 'surau' as const,
-    offsetLat: -0.0025,
-    offsetLng: 0.0032,
-    distanceMeters: 360,
-    walkMin: 5,
-    motorMin: 1,
-    carMin: 2,
-    details: 'Surau kariah aktif aktiviti solat 5 waktu & pengajian mingguan',
-  },
-  {
-    id: 103,
-    name: 'Stesen Minyak (Ada Kemudahan Surau)',
-    category: 'surau' as const,
-    offsetLat: 0.0052,
-    offsetLng: -0.0041,
-    distanceMeters: 650,
-    walkMin: 8,
-    motorMin: 2,
-    carMin: 3,
-    details: 'Stesen minyak dengan surau bersih berhawa dingin & tandas awam',
-  },
-  {
-    id: 104,
-    name: 'Klinik Komuniti & Farmasi',
-    category: 'klinik' as const,
-    offsetLat: -0.0048,
-    offsetLng: -0.0035,
-    distanceMeters: 720,
-    walkMin: 9,
-    motorMin: 3,
-    carMin: 3,
-    details: 'Rawatan pesakit luar, pemeriksaan kesihatan asas & bekalan ubat',
-  },
-  {
-    id: 105,
-    name: 'Pasar Mini / Mart Runcit',
-    category: 'runcit' as const,
-    offsetLat: 0.0022,
-    offsetLng: -0.0031,
-    distanceMeters: 390,
-    walkMin: 5,
-    motorMin: 2,
-    carMin: 2,
-    details: 'Barangan keperluan dapur harian, runcit & barangan basah',
-  },
-  {
-    id: 106,
-    name: 'Restoran / Kedai Makan Tempatan',
-    category: 'makanan' as const,
-    offsetLat: 0.0042,
-    offsetLng: 0.0058,
-    distanceMeters: 620,
-    walkMin: 8,
-    motorMin: 2,
-    carMin: 3,
-    details: 'Pilihan makanan tempatan, sarapan dan masakan panas',
-  },
-  {
-    id: 107,
-    name: 'Hentian Bas & Pengangkutan Awam',
-    category: 'transit' as const,
-    offsetLat: -0.0062,
-    offsetLng: 0.0022,
-    distanceMeters: 800,
-    walkMin: 10,
-    motorMin: 3,
-    carMin: 4,
-    details: 'Laluan bas perantara ke stesen rel transit terdekat',
-  },
-  {
-    id: 108,
-    name: 'Alur Saliran Monsun (Parit Utama)',
-    category: 'banjir' as const,
-    offsetLat: -0.0038,
-    offsetLng: -0.0065,
-    distanceMeters: 880,
-    walkMin: 11,
-    motorMin: 3,
-    carMin: 4,
-    details: 'Zon alur limpahan air: Berwaspada jika hujan lebat berterusan',
-  },
-];
+interface SearchResult {
+  id: number;
+  label: string;
+  full_name: string;
+  lat: number;
+  lng: number;
+}
 
 export default function ExplorePage() {
   const [selectedLocation, setSelectedLocation] = useState('KL Sentral / Brickfields');
@@ -138,12 +47,19 @@ export default function ExplorePage() {
   const [timeBudget, setTimeBudget] = useState<5 | 10 | 15>(10);
   const [travelMode, setTravelMode] = useState<'motor' | 'car' | 'walking'>('motor');
 
-  // Real live facilities state
+  // Search autocomplete state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Real facilities state
   const [rawFacilities, setRawFacilities] = useState<FacilityPoi[]>([]);
   const [isLoadingFacilities, setIsLoadingFacilities] = useState(false);
   const [isLiveFromOsm, setIsLiveFromOsm] = useState(false);
 
-  // Filter states
+  // Filters
   const [filters, setFilters] = useState({
     surau: true,
     makanan: true,
@@ -164,48 +80,82 @@ export default function ExplorePage() {
     setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // Debounced search recommendations query
+  useEffect(() => {
+    if (!searchQuery || searchQuery.trim().length < 2) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery.trim())}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data.results || []);
+          setShowDropdown(true);
+        }
+      } catch (err) {
+        console.warn('Search query error:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Close search dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Fetch real facilities from Overpass API
   const fetchFacilities = async (lat: number, lng: number) => {
     setIsLoadingFacilities(true);
     try {
-      const radius = travelMode === 'walking' ? 1600 : 3500;
+      const radius = travelMode === 'walking' ? 1600 : 2500;
       const res = await fetch(`/api/facilities?lat=${lat}&lng=${lng}&radius=${radius}`);
       if (res.ok) {
         const data = await res.json();
         if (data.facilities && data.facilities.length > 0) {
           setRawFacilities(data.facilities);
           setIsLiveFromOsm(true);
-          showToast(`Berjaya muat ${data.facilities.length} fasiliti sebenar dari OpenStreetMap!`);
+          showToast(`${data.facilities.length} fasiliti dikesan dari OpenStreetMap!`);
           setIsLoadingFacilities(false);
           return;
         }
       }
     } catch (e) {
-      console.warn('Overpass fetch error, using local fallback:', e);
+      console.warn('Overpass fetch error:', e);
     }
 
-    // Fallback if network or overpass is quiet
-    const fallback = fallbackTemplates.map((t) => ({
-      id: t.id,
-      name: t.name,
-      category: t.category,
-      lat: lat + t.offsetLat,
-      lng: lng + t.offsetLng,
-      distanceMeters: t.distanceMeters,
-      walkMin: t.walkMin,
-      motorMin: t.motorMin,
-      carMin: t.carMin,
-      details: t.details,
-    }));
-    setRawFacilities(fallback);
+    // If Overpass is quiet or no nodes found in very sparse location
+    setRawFacilities([]);
     setIsLiveFromOsm(false);
     setIsLoadingFacilities(false);
   };
 
-  // Fetch on mount or when coordinates change
+  // Re-fetch when coordinates change
   useEffect(() => {
     fetchFacilities(coordinates.lat, coordinates.lng);
   }, [coordinates.lat, coordinates.lng]);
+
+  const handleSelectSearchResult = (result: SearchResult) => {
+    setCoordinates({ lat: result.lat, lng: result.lng });
+    setSelectedLocation(result.label);
+    setSearchQuery('');
+    setShowDropdown(false);
+    showToast(`Peta beralih ke: ${result.label}`);
+  };
 
   const handleCenterChange = (newCenter: { lat: number; lng: number }) => {
     setCoordinates(newCenter);
@@ -215,28 +165,30 @@ export default function ExplorePage() {
   const handlePresetSelect = (name: string, lat: number, lng: number) => {
     setSelectedLocation(name);
     setCoordinates({ lat, lng });
-    showToast(`Lokasi dikemaskini: ${name}`);
+    showToast(`Beralih ke: ${name}`);
   };
 
   const handleCurrentLocation = () => {
     if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      showToast('Sedang mendapatkan GPS lokasi semasa...');
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const newCenter = { lat: pos.coords.latitude, lng: pos.coords.longitude };
           setCoordinates(newCenter);
           setSelectedLocation('Lokasi Semasa Anda (GPS)');
-          showToast('Menggunakan GPS lokasi anda...');
+          showToast('Koordinat GPS berjaya dikesan!');
         },
-        () => {
-          showToast('GPS tidak aktif, menggunakan titik rujukan.');
-        }
+        (err) => {
+          console.warn('GPS error:', err);
+          showToast('Sila benarkan akses lokasi (GPS) pada pelayar anda.');
+        },
+        { timeout: 10000, enableHighAccuracy: true }
       );
     } else {
-      showToast('Pelayar tidak menyokong GPS.');
+      showToast('Pelayar anda tidak menyokong fungsi GPS.');
     }
   };
 
-  // Filtered facilities based on active time budget & active toggles
   const activePois = useMemo(() => {
     return rawFacilities.filter((poi) => {
       if (!filters[poi.category]) return false;
@@ -270,17 +222,17 @@ export default function ExplorePage() {
             }`}
           >
             <span className={`w-2 h-2 rounded-full ${isLiveFromOsm ? 'bg-[#1B7A3D] animate-pulse' : 'bg-[#C5A100]'}`} />
-            <span>{isLiveFromOsm ? 'Data Sebenar Overpass OSM' : 'Mod Standby'}</span>
+            <span>{isLiveFromOsm ? 'Data Sebenar Overpass OSM' : 'Menunggu Data'}</span>
           </Badge>
 
           <Button
             variant="outline"
             size="sm"
             onClick={handleCurrentLocation}
-            className="font-mono text-xs border-[#D0C5B0] bg-white hover:bg-[#F3ECE1] text-[#1A1A1A] gap-1.5 cursor-pointer rounded-xs"
+            className="font-mono text-xs border-[#D0C5B0] bg-white hover:bg-[#F3ECE1] text-[#1A1A1A] gap-1.5 cursor-pointer rounded-xs shadow-2xs"
           >
             <Crosshair className="w-3.5 h-3.5 text-[#1B7A3D]" />
-            <span className="hidden sm:inline">Lokasi Semasa</span>
+            <span className="hidden sm:inline">Guna Lokasi Semasa</span>
           </Button>
 
           <div className="font-mono text-xs text-[#5A564F] bg-[#F3ECE1] px-2.5 py-1 rounded-xs border border-[#DFD6C2] hidden md:block">
@@ -293,11 +245,11 @@ export default function ExplorePage() {
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* Left Side Control Panel */}
         <aside className="w-full md:w-[380px] lg:w-[410px] border-r border-[#E0D7C4] bg-[#FAF6EE] flex flex-col overflow-y-auto shrink-0 z-10">
-          {/* Location & Search Header */}
-          <div className="p-4 border-b border-[#E0D7C4] space-y-2.5 bg-white">
+          {/* Search with Autocomplete Recommendations */}
+          <div className="p-4 border-b border-[#E0D7C4] space-y-2.5 bg-white relative" ref={searchContainerRef}>
             <div className="flex items-center justify-between">
               <label className="font-mono text-[11px] uppercase tracking-wider text-[#5A564F] font-bold block">
-                Titik Rujukan Analisis
+                Cari Lokasi / Kawasan Malaysia
               </label>
               {isLoadingFacilities && (
                 <span className="flex items-center gap-1 text-[11px] font-mono text-[#1B7A3D] animate-pulse">
@@ -310,17 +262,69 @@ export default function ExplorePage() {
             <div className="relative">
               <input
                 type="text"
-                value={selectedLocation}
-                onChange={(e) => setSelectedLocation(e.target.value)}
-                placeholder="Cari kawasan atau masukkan nama tempat..."
-                className="w-full h-9 pl-8 pr-3 text-xs bg-[#FAF7F0] border border-[#DCD3C0] rounded-xs font-sans text-[#1A1A1A] focus:outline-none focus:border-[#1B7A3D]"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowDropdown(true);
+                }}
+                onFocus={() => {
+                  if (searchResults.length > 0) setShowDropdown(true);
+                }}
+                placeholder="Taip cth: Bangi, Shah Alam, Ipoh, JB..."
+                className="w-full h-9 pl-8 pr-7 text-xs bg-[#FAF7F0] border border-[#DCD3C0] rounded-xs font-sans text-[#1A1A1A] focus:outline-none focus:border-[#1B7A3D]"
               />
               <Search className="w-4 h-4 text-[#8C877D] absolute left-2.5 top-2.5" />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2.5 text-[#8C877D] hover:text-[#1A1A1A]"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* Recommendations Dropdown */}
+              {showDropdown && (
+                <div className="absolute top-10 left-0 right-0 z-50 bg-white border border-[#DCD3C0] rounded-xs shadow-lg max-h-60 overflow-y-auto">
+                  {isSearching ? (
+                    <div className="p-3 text-xs font-mono text-[#8C877D] text-center">
+                      Mencari cadangan lokasi...
+                    </div>
+                  ) : searchResults.length > 0 ? (
+                    searchResults.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => handleSelectSearchResult(item)}
+                        className="w-full text-left p-2.5 px-3 hover:bg-[#FAF6EE] border-b border-[#F2ECE1] last:border-0 flex items-start gap-2 transition-colors cursor-pointer"
+                      >
+                        <MapPin className="w-3.5 h-3.5 text-[#1B7A3D] shrink-0 mt-0.5" />
+                        <div>
+                          <div className="text-xs font-semibold text-[#1A1A1A]">{item.label}</div>
+                          <div className="text-[10px] text-[#8C877D] truncate max-w-[280px]">
+                            {item.full_name}
+                          </div>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="p-3 text-xs font-mono text-[#8C877D] text-center">
+                      Tiada cadangan ditemui untuk &quot;{searchQuery}&quot;
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Selected Location Pill */}
+            <div className="flex items-center justify-between text-[11px] font-mono bg-[#FAF6EE] border border-[#E8DFC8] p-1.5 px-2.5 rounded-xs">
+              <span className="text-[#5A564F] truncate font-medium">
+                Aktif: <strong>{selectedLocation}</strong>
+              </span>
             </div>
 
             {/* Quick Presets */}
             <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-              <span className="font-mono text-[10px] text-[#7A756B]">Contoh:</span>
+              <span className="font-mono text-[10px] text-[#7A756B]">Pilihan Pantas:</span>
               <button
                 onClick={() => handlePresetSelect('KL Sentral / Brickfields', 3.134, 101.6869)}
                 className="text-[10px] font-mono px-2 py-0.5 rounded-xs bg-[#EFE9DC] text-[#4A453C] hover:bg-[#E2DDD0] cursor-pointer"
@@ -339,6 +343,12 @@ export default function ExplorePage() {
               >
                 Bangi
               </button>
+              <button
+                onClick={() => handlePresetSelect('Johor Bahru Bandar', 1.4655, 103.7578)}
+                className="text-[10px] font-mono px-2 py-0.5 rounded-xs bg-[#EFE9DC] text-[#4A453C] hover:bg-[#E2DDD0] cursor-pointer"
+              >
+                JB
+              </button>
             </div>
           </div>
 
@@ -347,7 +357,7 @@ export default function ExplorePage() {
             {/* 3 Travel Modes: Motosikal, Kereta, Jalan Kaki */}
             <div>
               <span className="font-mono text-[11px] uppercase tracking-wider text-[#5A564F] font-bold block mb-2">
-                Mod Mobiliti (3 Pilihan)
+                Mod Mobiliti
               </span>
               <div className="grid grid-cols-3 gap-1.5">
                 <Button
@@ -355,7 +365,7 @@ export default function ExplorePage() {
                   size="sm"
                   onClick={() => {
                     setTravelMode('motor');
-                    showToast('Mod Motosikal (Capaian pantas jalan raya).');
+                    showToast('Mod Motosikal dipilih.');
                   }}
                   className={`font-mono text-xs rounded-xs flex items-center justify-center gap-1 cursor-pointer py-1.5 ${
                     travelMode === 'motor'
@@ -372,11 +382,11 @@ export default function ExplorePage() {
                   size="sm"
                   onClick={() => {
                     setTravelMode('car');
-                    showToast('Mod Kereta (Mengikut laluan jalan raya kereta).');
+                    showToast('Mod Kereta dipilih.');
                   }}
                   className={`font-mono text-xs rounded-xs flex items-center justify-center gap-1 cursor-pointer py-1.5 ${
                     travelMode === 'car'
-                      ? 'bg-[#3B7BB4] hover:bg-[#2C6294] text-white shadow-2xs'
+                      ? 'bg-[#2563EB] hover:bg-[#1D4ED8] text-white shadow-2xs'
                       : 'bg-white border-[#DCD2BE] text-[#1A1A1A]'
                   }`}
                 >
@@ -389,7 +399,7 @@ export default function ExplorePage() {
                   size="sm"
                   onClick={() => {
                     setTravelMode('walking');
-                    showToast('Mod Pejalan Kaki (Radius pejalan kaki).');
+                    showToast('Mod Pejalan Kaki dipilih.');
                   }}
                   className={`font-mono text-xs rounded-xs flex items-center justify-center gap-1 cursor-pointer py-1.5 ${
                     travelMode === 'walking'
@@ -443,7 +453,7 @@ export default function ExplorePage() {
                   onClick={() => toggleFilter('surau')}
                   className={`text-[11px] font-mono px-2 py-1 rounded-xs border transition-colors cursor-pointer ${
                     filters.surau
-                      ? 'bg-[#FFF8D6] text-[#856D00] border-[#C5A100]'
+                      ? 'bg-[#FFF9E6] text-[#856D00] border-[#C5A100]'
                       : 'bg-white text-[#8C877D] border-[#DCD2BE]'
                   }`}
                 >
@@ -453,7 +463,7 @@ export default function ExplorePage() {
                   onClick={() => toggleFilter('klinik')}
                   className={`text-[11px] font-mono px-2 py-1 rounded-xs border transition-colors cursor-pointer ${
                     filters.klinik
-                      ? 'bg-[#E3F2E7] text-[#1B7A3D] border-[#1B7A3D]'
+                      ? 'bg-[#EAF6EE] text-[#1B7A3D] border-[#1B7A3D]'
                       : 'bg-white text-[#8C877D] border-[#DCD2BE]'
                   }`}
                 >
@@ -463,7 +473,7 @@ export default function ExplorePage() {
                   onClick={() => toggleFilter('makanan')}
                   className={`text-[11px] font-mono px-2 py-1 rounded-xs border transition-colors cursor-pointer ${
                     filters.makanan
-                      ? 'bg-[#FFF0E6] text-[#B85400] border-[#E87A30]'
+                      ? 'bg-[#FFF2EB] text-[#B85400] border-[#E87A30]'
                       : 'bg-white text-[#8C877D] border-[#DCD2BE]'
                   }`}
                 >
@@ -473,7 +483,7 @@ export default function ExplorePage() {
                   onClick={() => toggleFilter('runcit')}
                   className={`text-[11px] font-mono px-2 py-1 rounded-xs border transition-colors cursor-pointer ${
                     filters.runcit
-                      ? 'bg-[#E8EFF6] text-[#1A4C78] border-[#3B7BB4]'
+                      ? 'bg-[#EDF3F8] text-[#1A4C78] border-[#3B7BB4]'
                       : 'bg-white text-[#8C877D] border-[#DCD2BE]'
                   }`}
                 >
@@ -483,21 +493,11 @@ export default function ExplorePage() {
                   onClick={() => toggleFilter('transit')}
                   className={`text-[11px] font-mono px-2 py-1 rounded-xs border transition-colors cursor-pointer ${
                     filters.transit
-                      ? 'bg-[#F2EDF8] text-[#59358A] border-[#8A5BBF]'
+                      ? 'bg-[#F4EFF9] text-[#59358A] border-[#8A5BBF]'
                       : 'bg-white text-[#8C877D] border-[#DCD2BE]'
                   }`}
                 >
                   🚆 Transit
-                </button>
-                <button
-                  onClick={() => toggleFilter('banjir')}
-                  className={`text-[11px] font-mono px-2 py-1 rounded-xs border transition-colors cursor-pointer ${
-                    filters.banjir
-                      ? 'bg-[#FDE8EC] text-[#A11D33] border-[#A11D33]'
-                      : 'bg-white text-[#8C877D] border-[#DCD2BE]'
-                  }`}
-                >
-                  ⚠ Banjir
                 </button>
               </div>
             </div>
@@ -514,16 +514,13 @@ export default function ExplorePage() {
               </Badge>
             </div>
 
-            {/* Status info note */}
-            <div className="bg-[#FAF4E6] border border-[#E5DAC0] p-2.5 rounded-xs text-[11px] text-[#5A564F] space-y-1">
+            <div className="bg-[#FAF4E6] border border-[#E5DAC0] p-2 rounded-xs text-[11px] text-[#5A564F] space-y-0.5">
               <div className="flex items-center gap-1.5 font-mono font-bold text-[#8F7400]">
                 <Sparkles className="w-3 h-3 text-[#C5A100]" />
-                <span>Data Geografi Sebenar</span>
+                <span>Peta Minimalis Bersih</span>
               </div>
               <p>
-                {isLiveFromOsm
-                  ? 'Fasiliti di bawah ditarik terus dari OpenStreetMap Malaysia mengikut kedudukan titik semasa anda.'
-                  : 'Memaparkan fasiliti contoh. Klik mana-mana titik pada peta untuk menyegerakkan data OSM.'}
+                Peta memaparkan 14 fasiliti terdekat agar kekal kemas. Klik atau halakan tetikus pada mana-mana pin untuk lihat maklumat.
               </p>
             </div>
 
@@ -532,8 +529,8 @@ export default function ExplorePage() {
               {activePois.length === 0 ? (
                 <div className="p-5 text-center text-[#8C877D] font-mono text-xs bg-white border border-[#E5DFC9] rounded-xs">
                   {isLoadingFacilities
-                    ? 'Sedang memuat turun data fasiliti OpenStreetMap...'
-                    : `Tiada fasiliti dalam bajet ${timeBudget} minit. Cuba tingkatkan masa atau tukar mod mobiliti.`}
+                    ? 'Sedang mencari fasiliti di OpenStreetMap...'
+                    : `Tiada fasiliti dalam bajet ${timeBudget} minit. Cuba pilih masa lebih besar atau mod motosikal/kereta.`}
                 </div>
               ) : (
                 activePois.map((poi) => (
@@ -563,9 +560,8 @@ export default function ExplorePage() {
           </div>
         </aside>
 
-        {/* Right Map Canvas Area with Real MapLibre GL */}
+        {/* Right Map Canvas Area */}
         <main className="flex-1 bg-[#F4EDE2] relative flex flex-col h-full overflow-hidden">
-          {/* Real MapLibre Component */}
           <MapView
             center={coordinates}
             onCenterChange={handleCenterChange}
@@ -575,7 +571,6 @@ export default function ExplorePage() {
             selectedLocationName={selectedLocation}
           />
 
-          {/* Floating toast */}
           {notification && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-[#1A1A1A] text-white font-mono text-xs px-4 py-2 rounded-xs shadow-md border border-[#333333] transition-all pointer-events-none">
               {notification}

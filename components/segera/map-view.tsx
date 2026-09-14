@@ -27,22 +27,15 @@ interface MapViewProps {
 }
 
 const CATEGORY_STYLES: Record<string, { emoji: string; bg: string; border: string; text: string }> = {
-  surau: { emoji: '🕌', bg: '#FFF8D6', border: '#C5A100', text: '#856D00' },
-  klinik: { emoji: '🏥', bg: '#E3F2E7', border: '#1B7A3D', text: '#0B4B24' },
-  makanan: { emoji: '🍲', bg: '#FFF0E6', border: '#E87A30', text: '#B85400' },
-  runcit: { emoji: '🛒', bg: '#E8EFF6', border: '#3B7BB4', text: '#1A4C78' },
-  transit: { emoji: '🚆', bg: '#F2EDF8', border: '#8A5BBF', text: '#59358A' },
+  surau: { emoji: '🕌', bg: '#FFF9E6', border: '#C5A100', text: '#856D00' },
+  klinik: { emoji: '🏥', bg: '#EAF6EE', border: '#1B7A3D', text: '#0B4B24' },
+  makanan: { emoji: '🍲', bg: '#FFF2EB', border: '#E87A30', text: '#B85400' },
+  runcit: { emoji: '🛒', bg: '#EDF3F8', border: '#3B7BB4', text: '#1A4C78' },
+  transit: { emoji: '🚆', bg: '#F4EFF9', border: '#8A5BBF', text: '#59358A' },
   banjir: { emoji: '⚠', bg: '#FDE8EC', border: '#A11D33', text: '#A11D33' },
 };
 
-/**
- * Generate a realistic road-network style isochrone polygon
- */
 function generateIsochronePolygon(center: { lat: number; lng: number }, mode: 'motor' | 'car' | 'walking', minutes: number) {
-  // Approximate reach in degrees
-  // walking: ~4.5 km/h -> 5 min = 375m, 10 min = 750m, 15 min = 1.1km
-  // motor: ~30 km/h -> 5 min = 2.5km, 10 min = 5.0km, 15 min = 7.5km
-  // car: ~24 km/h -> 5 min = 2.0km, 10 min = 4.0km, 15 min = 6.0km
   let baseRadiusKm = 0.75;
   if (mode === 'walking') {
     baseRadiusKm = minutes === 5 ? 0.38 : minutes === 10 ? 0.75 : 1.15;
@@ -56,7 +49,6 @@ function generateIsochronePolygon(center: { lat: number; lng: number }, mode: 'm
   const points: [number, number][] = [];
   const numVertices = 24;
 
-  // Realistic road reach variance multipliers
   const variance = [
     1.05, 0.92, 1.18, 0.88, 1.25, 0.95, 1.1, 0.85,
     1.2, 0.98, 1.15, 0.9, 1.05, 1.22, 0.85, 1.12,
@@ -66,12 +58,10 @@ function generateIsochronePolygon(center: { lat: number; lng: number }, mode: 'm
   for (let i = 0; i < numVertices; i++) {
     const angle = (i / numVertices) * Math.PI * 2;
     const factor = variance[i % variance.length];
-    // East-west distortion for latitude
     const latOffset = Math.cos(angle) * radiusDeg * factor;
     const lngOffset = (Math.sin(angle) * radiusDeg * factor) / Math.cos((center.lat * Math.PI) / 180);
     points.push([center.lng + lngOffset, center.lat + latOffset]);
   }
-  // Close polygon
   points.push(points[0]);
 
   return {
@@ -100,28 +90,31 @@ export function MapView({
 
   const [mapLoaded, setMapLoaded] = useState(false);
 
-  // Initialize MapLibre GL
+  // Initialize Clean, Minimalist MapLibre GL
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    // Direct OpenStreetMap raster style (Guaranteed 100% free, loads instantly, no API key needed)
-    const osmStyle: maplibregl.StyleSpecification = {
+    // CartoDB Light Minimalist Raster Tiles (Clean, elegant, non-cluttered grey tone)
+    const cleanStyle: maplibregl.StyleSpecification = {
       version: 8,
       sources: {
-        'osm-tiles': {
+        'carto-light': {
           type: 'raster',
           tiles: [
-            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+            'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+            'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+            'https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
           ],
           tileSize: 256,
-          attribution: '&copy; OpenStreetMap contributors',
+          attribution: '&copy; OpenStreetMap &copy; CARTO',
         },
       },
       layers: [
         {
-          id: 'osm-tiles-layer',
+          id: 'carto-light-layer',
           type: 'raster',
-          source: 'osm-tiles',
+          source: 'carto-light',
           minzoom: 0,
           maxzoom: 19,
         },
@@ -130,19 +123,14 @@ export function MapView({
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: osmStyle,
+      style: cleanStyle,
       center: [center.lng, center.lat],
       zoom: travelMode === 'walking' ? 14.5 : 13.2,
       attributionControl: false,
     });
 
-    // Ensure map tiles resize correctly once container dimensions are rendered
-    setTimeout(() => {
-      map.resize();
-    }, 150);
-    setTimeout(() => {
-      map.resize();
-    }, 500);
+    setTimeout(() => map.resize(), 150);
+    setTimeout(() => map.resize(), 500);
 
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: true, showZoom: true }),
@@ -152,12 +140,11 @@ export function MapView({
     map.addControl(
       new maplibregl.AttributionControl({
         compact: true,
-        customAttribution: '© OpenStreetMap contributors © MapLibre',
+        customAttribution: '© OpenStreetMap © CARTO',
       }),
       'bottom-right'
     );
 
-    // Click anywhere on map to set new center
     map.on('click', (e) => {
       onCenterChange({ lat: e.lngLat.lat, lng: e.lngLat.lng });
     });
@@ -165,7 +152,6 @@ export function MapView({
     map.on('load', () => {
       setMapLoaded(true);
 
-      // Add isochrone source and layers
       const isochroneData = generateIsochronePolygon(center, travelMode, timeBudget);
       map.addSource('isochrone-source', {
         type: 'geojson',
@@ -178,8 +164,8 @@ export function MapView({
         type: 'fill',
         source: 'isochrone-source',
         paint: {
-          'fill-color': travelMode === 'motor' ? '#0E4D64' : travelMode === 'car' ? '#3B7BB4' : '#1B7A3D',
-          'fill-opacity': 0.24,
+          'fill-color': travelMode === 'motor' ? '#0E4D64' : travelMode === 'car' ? '#2563EB' : '#1B7A3D',
+          'fill-opacity': 0.16,
         },
       });
 
@@ -189,8 +175,9 @@ export function MapView({
         type: 'line',
         source: 'isochrone-source',
         paint: {
-          'line-color': travelMode === 'motor' ? '#0E4D64' : travelMode === 'car' ? '#3B7BB4' : '#1B7A3D',
-          'line-width': 3,
+          'line-color': travelMode === 'motor' ? '#0E4D64' : travelMode === 'car' ? '#2563EB' : '#1B7A3D',
+          'line-width': 2.5,
+          'line-dasharray': [2, 1],
         },
       });
     });
@@ -209,12 +196,14 @@ export function MapView({
     if (!map) return;
 
     if (!centerMarkerRef.current) {
-      // Create custom center pin
       const el = document.createElement('div');
       el.className = 'center-pin-marker';
       el.innerHTML = `
-        <div style="width: 32px; height: 32px; background: #1A1A1A; border: 3px solid #FFFFFF; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; cursor: grab;">
-          <div style="width: 10px; height: 10px; background: #1B7A3D; border-radius: 50%; transform: rotate(45deg);"></div>
+        <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: grab;">
+          <div style="position: absolute; width: 34px; height: 34px; background: rgba(27,122,61,0.25); border-radius: 50%; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+          <div style="width: 26px; height: 26px; background: #1A1A1A; border: 2.5px solid #FFFFFF; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 4px 10px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center;">
+            <div style="width: 8px; height: 8px; background: #1B7A3D; border-radius: 50%; transform: rotate(45deg);"></div>
+          </div>
         </div>
       `;
 
@@ -232,7 +221,6 @@ export function MapView({
       centerMarkerRef.current.setLngLat([center.lng, center.lat]);
     }
 
-    // Pan smoothly
     map.easeTo({
       center: [center.lng, center.lat],
       duration: 600,
@@ -250,7 +238,7 @@ export function MapView({
       const isochroneData = generateIsochronePolygon(center, travelMode, timeBudget);
       source.setData(isochroneData);
 
-      const color = travelMode === 'motor' ? '#0E4D64' : travelMode === 'car' ? '#3B7BB4' : '#1B7A3D';
+      const color = travelMode === 'motor' ? '#0E4D64' : travelMode === 'car' ? '#2563EB' : '#1B7A3D';
       if (map.getLayer('isochrone-fill')) {
         map.setPaintProperty('isochrone-fill', 'fill-color', color);
       }
@@ -260,28 +248,28 @@ export function MapView({
     }
   }, [center, travelMode, timeBudget, mapLoaded]);
 
-  // Update Facility Markers with Hover Popups
+  // Update Facility Markers: Clean, uncluttered, top 12-15 relevant facilities on map
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Clear old markers
     facilityMarkersRef.current.forEach((m) => m.remove());
     facilityMarkersRef.current = [];
 
-    // Initialize reusable popup if not present
     if (!hoverPopupRef.current) {
       hoverPopupRef.current = new maplibregl.Popup({
         closeButton: false,
         closeOnClick: false,
-        offset: 16,
+        offset: 14,
         className: 'facility-hover-popup',
       });
     }
     const popup = hoverPopupRef.current;
 
-    // Render new markers
-    facilities.forEach((poi) => {
+    // Show top 14 closest facilities to keep the map clean and calm (tak serabut)
+    const displayList = facilities.slice(0, 14);
+
+    displayList.forEach((poi) => {
       const style = CATEGORY_STYLES[poi.category] || {
         emoji: '📍',
         bg: '#FFFFFF',
@@ -290,36 +278,34 @@ export function MapView({
       };
 
       const markerEl = document.createElement('div');
-      markerEl.className = 'poi-marker-container';
       markerEl.style.cursor = 'pointer';
       markerEl.innerHTML = `
         <div style="
-          width: 32px;
-          height: 32px;
+          width: 28px;
+          height: 28px;
           background: ${style.bg};
           border: 1.5px solid ${style.border};
-          border-radius: 8px;
+          border-radius: 6px;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 15px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+          font-size: 13px;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.12);
           transition: transform 0.15s ease;
         ">
           ${style.emoji}
         </div>
       `;
 
-      // Hover tooltip content
       const tooltipHtml = `
-        <div style="padding: 6px 8px; font-family: system-ui, sans-serif; min-width: 170px; max-width: 240px;">
-          <div style="font-weight: 700; font-size: 13px; color: #1A1A1A; margin-bottom: 3px;">
+        <div style="padding: 6px 8px; font-family: system-ui, sans-serif; min-width: 170px; max-width: 230px;">
+          <div style="font-weight: 700; font-size: 12px; color: #1A1A1A; margin-bottom: 2px;">
             ${poi.name}
           </div>
-          <div style="font-size: 11px; color: #5A564F; line-height: 1.35; margin-bottom: 5px;">
+          <div style="font-size: 11px; color: #5A564F; line-height: 1.3; margin-bottom: 5px;">
             ${poi.details}
           </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #EAE4D5; padding-top: 4px; font-family: monospace; font-size: 10px; color: #1B7A3D; font-weight: 600;">
+          <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #EAE4D5; padding-top: 3px; font-family: monospace; font-size: 10px; color: #1B7A3D; font-weight: 600;">
             <span>${poi.distanceMeters}m</span>
             <span>~${travelMode === 'motor' ? poi.motorMin + ' min motor' : travelMode === 'car' ? poi.carMin + ' min kereta' : poi.walkMin + ' min jalan'}</span>
           </div>
@@ -350,10 +336,9 @@ export function MapView({
 
   return (
     <div className="relative w-full h-full bg-[#F4EDE2] overflow-hidden">
-      {/* MapLibre DOM target */}
       <div ref={mapContainerRef} className="w-full h-full" />
 
-      {/* Floating Instructions & Legend */}
+      {/* Floating Status Bar */}
       <div className="absolute top-3 left-3 z-10 pointer-events-none">
         <div className="bg-white/95 backdrop-blur-xs border border-[#DCD3C0] px-3 py-1.5 rounded-xs shadow-xs text-xs font-mono text-[#1A1A1A] flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-[#1B7A3D] animate-pulse" />
@@ -365,26 +350,26 @@ export function MapView({
 
       {/* Map Legend Overlay */}
       <div className="absolute bottom-3 left-3 z-10 bg-white/95 backdrop-blur-xs border border-[#DCD3C0] p-2.5 rounded-xs shadow-xs text-[11px] font-mono text-[#5A564F] hidden sm:block">
-        <div className="font-bold text-[#1A1A1A] mb-1.5 uppercase text-[10px] tracking-wider">
-          Petunjuk Peta (Hover Ikon Fasiliti)
+        <div className="font-bold text-[#1A1A1A] mb-1 uppercase text-[10px] tracking-wider">
+          Peta Bersih (Hover Ikon Fasiliti)
         </div>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-[#1A1A1A] inline-block" />
-            <span>Titik Rujukan (Boleh Tarik / Klik Peta)</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-[#1A1A1A] inline-block" />
+            <span>Titik Rujukan (Tarik / Klik Peta)</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span
-              className="w-3 h-3 rounded-xs border border-dashed inline-block"
+              className="w-2.5 h-2.5 rounded-xs border border-dashed inline-block"
               style={{
-                backgroundColor: travelMode === 'motor' ? '#0E4D6433' : travelMode === 'car' ? '#3B7BB433' : '#1B7A3D33',
-                borderColor: travelMode === 'motor' ? '#0E4D64' : travelMode === 'car' ? '#3B7BB4' : '#1B7A3D',
+                backgroundColor: travelMode === 'motor' ? '#0E4D6433' : travelMode === 'car' ? '#2563EB33' : '#1B7A3D33',
+                borderColor: travelMode === 'motor' ? '#0E4D64' : travelMode === 'car' ? '#2563EB' : '#1B7A3D',
               }}
             />
             <span>Zon {timeBudget} Minit ({travelMode === 'motor' ? 'Motosikal' : travelMode === 'car' ? 'Kereta' : 'Pejalan Kaki'})</span>
           </div>
-          <div className="flex items-center gap-1.5 text-[#1B7A3D]">
-            <span>Hover mana-mana pin untuk lihat maklumat</span>
+          <div className="text-[10px] text-[#8C877D]">
+            Paparan top {Math.min(facilities.length, 14)} titik terdekat untuk kekal kemas
           </div>
         </div>
       </div>
